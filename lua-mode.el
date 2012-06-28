@@ -1247,34 +1247,32 @@ If `lua-process' is nil or dead, start a new process first."
 (defun lua-send-region (start end)
   "Send region to lua subprocess."
   (interactive "r")
-  ;; make temporary lua file
-  (let ((tempfile (lua-make-temp-file "lua-"))
-        (last-prompt nil)
+  (let ((last-prompt nil)
         (prompt-found nil)
         (lua-stdin-line-offset (count-lines (point-min) start))
         (lua-stdin-buffer (current-buffer))
+        (region-contents (buffer-substring-no-properties start end))
         current-prompt )
-    (write-region start end tempfile)
     (or (and lua-process
              (comint-check-proc lua-process-buffer))
         (lua-start-process lua-default-application))
     ;; kill lua process without query
     (if (fboundp 'process-kill-without-query)
         (process-kill-without-query lua-process))
-    ;; send dofile(tempfile)
+
     (with-current-buffer lua-process-buffer
       (goto-char (point-max))
       (setq last-prompt (point-max))
-      (comint-simple-send (get-buffer-process (current-buffer))
-                          (format "dofile(\"%s\")"
-                                  (replace-regexp-in-string "\\\\" "\\\\\\\\" tempfile)))
+      (comint-send-string (get-buffer-process (current-buffer))
+                          region-contents)
+      (unless (string-match ".*\n$" region-contents)
+        (comint-send-string (get-buffer-process (current-buffer)) "\n"))
+
       ;; wait for prompt
       (while (not prompt-found)
         (accept-process-output (get-buffer-process (current-buffer)))
         (goto-char (point-max))
         (setq prompt-found (and (lua-prompt-line) (< last-prompt (point-max)))))
-      ;; remove temp. lua file
-      (delete-file tempfile)
       (lua-postprocess-output-buffer lua-process-buffer last-prompt lua-stdin-line-offset)
       (if lua-always-show
           (display-buffer lua-process-buffer)))))
